@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import json
 from openai import OpenAI
 
 # -------------------
@@ -10,11 +11,11 @@ from openai import OpenAI
 app = FastAPI()
 
 # -------------------
-# CORS (MUST be here)
+# CORS (MVP SAFE)
 # -------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # MVP ONLY
+    allow_origins=["*"],  # MVP only
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +35,30 @@ class AnalyzeRequest(BaseModel):
     goal: str
 
 # -------------------
+# System prompt (CRITICAL)
+# -------------------
+SYSTEM_PROMPT = """
+You are ChatAdvisor, a reply-writing assistant.
+
+STRICT RULES:
+- Respond ONLY in valid JSON.
+- Do NOT include explanations inside replies.
+- Do NOT repeat summary or risk inside replies.
+- Do NOT use numbering, markdown, labels, or emojis inside values.
+- Replies must be ready to copy and send.
+
+Return EXACTLY this JSON shape:
+
+{
+  "summary": "Brief 1–2 line explanation of what is happening",
+  "risk": "Potential risk if any, otherwise empty string",
+  "best_reply": "One clear reply message",
+  "alternative_reply": "A different valid reply message",
+  "avoid_saying": "What the user should avoid saying"
+}
+"""
+
+# -------------------
 # Routes
 # -------------------
 @app.get("/")
@@ -42,33 +67,34 @@ def root():
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
-    prompt = f"""
+    user_prompt = f"""
 Conversation:
 {req.content}
 
-Type: {req.conversation_type}
+Conversation type: {req.conversation_type}
 Goal: {req.goal}
-
-Give:
-1. Summary
-2. Risk (or null)
-3. Best reply
-4. Alternative reply
-5. Avoid saying
 """
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
         temperature=0.4,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
     )
 
-    text = response.choices[0].message.content
+    raw = response.choices[0].message.content.strip()
 
-    return {
-        "summary": text.split("\n")[0],
-        "risk": None,
-        "best_reply": text,
-        "alternative_reply": text,
-        "avoid_saying": "Avoid sounding pushy."
-    }
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {
+            "summary": "Unable to analyze conversation clearly.",
+            "risk": "",
+            "best_reply": "Thanks for reaching out. I’ll get back to you later.",
+            "alternative_reply": "Appreciate the message. I’ll review this and respond.",
+            "avoid_saying": "Anything confrontational or dismissive."
+        }
+
+    return parsed
