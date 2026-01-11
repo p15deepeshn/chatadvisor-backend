@@ -33,9 +33,10 @@ class AnalyzeRequest(BaseModel):
     content: str
     conversation_type: str
     goal: str
+    rewrite_style: str | None = None  # ✅ IMPORTANT
 
 # -------------------
-# System prompt (CRITICAL)
+# System prompt
 # -------------------
 SYSTEM_PROMPT = """
 You are a confident, socially intelligent communication assistant.
@@ -51,23 +52,7 @@ Guidelines:
 - Never shame or judge the user
 - Do not explain — just write the reply
 
-Conversation:
-{conversation}
-
-Context:
-{conversation_type}
-
-User goal:
-{goal}
-
-If a rewrite style is provided, apply it strictly:
-- Softer → reduce intensity, keep warmth
-- More confident → assertive, attractive, clear
-- Romantic → affirming, emotionally warm (not creepy)
-- Playful → light, teasing, natural
-- Shorter → concise, no filler
-
-Return exactly this JSON:
+Return exactly this JSON (no extra text):
 {
   "summary": "1–2 lines explaining what’s happening",
   "risk": "one short line OR null",
@@ -86,12 +71,44 @@ def root():
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
+
+    # -------- Rewrite style instruction --------
+    style_instruction = ""
+
+    if req.rewrite_style == "Softer":
+        style_instruction = (
+            "Rewrite the reply in a softer, warmer, emotionally gentle tone."
+        )
+
+    elif req.rewrite_style == "More confident":
+        style_instruction = (
+            "Rewrite the reply to sound confident, decisive, and attractive."
+        )
+
+    elif req.rewrite_style == "More expressive":
+        style_instruction = (
+            "Rewrite the reply to be more expressive and emotionally affirming. "
+            "Use natural warmth, positive emphasis, and reassurance without "
+            "sounding exaggerated, cheesy, or fake."
+        )
+
+    elif req.rewrite_style == "Shorter":
+        style_instruction = (
+            "Rewrite the reply to be very concise while keeping warmth and clarity."
+        )
+
+    # -------- User prompt --------
     user_prompt = f"""
 Conversation:
 {req.content}
 
-Conversation type: {req.conversation_type}
-Goal: {req.goal}
+Conversation type:
+{req.conversation_type}
+
+User goal:
+{req.goal}
+
+{style_instruction}
 """
 
     response = client.chat.completions.create(
@@ -107,13 +124,14 @@ Goal: {req.goal}
 
     try:
         parsed = json.loads(raw)
-    except Exception:
-        return {
-            "summary": "Unable to analyze conversation clearly.",
-            "risk": "",
-            "best_reply": "Thanks for reaching out. I’ll get back to you later.",
-            "alternative_reply": "Appreciate the message. I’ll review this and respond.",
-            "avoid_saying": "Anything confrontational or dismissive."
-        }
+        return parsed
 
-    return parsed
+    except Exception:
+        # Safe fallback (never break UI)
+        return {
+            "summary": "The conversation needs a thoughtful, well-phrased response.",
+            "risk": None,
+            "best_reply": "That sounds good — I really appreciate you saying that.",
+            "alternative_reply": "Honestly, that means a lot to hear.",
+            "avoid_saying": "Anything dismissive, defensive, or overly formal."
+        }
