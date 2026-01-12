@@ -33,26 +33,26 @@ class AnalyzeRequest(BaseModel):
     content: str
     conversation_type: str
     goal: str
-    rewrite_style: str | None = None  # ✅ IMPORTANT
+    rewrite_style: str | None = None
 
 # -------------------
-# System prompt
+# System prompt (LOCKED)
 # -------------------
 SYSTEM_PROMPT = """
 You are a confident, socially intelligent communication assistant.
 
-The user already knows what they want to say.
-Your job is NOT to give advice or moral lessons.
-Your job is to rewrite the reply using better word choice.
+The user already knows WHAT they want to say.
+Your job is ONLY to rewrite it with better word choice.
 
-Guidelines:
-- Sound natural, confident, and human
-- Avoid being preachy, philosophical, or overly safe
+Rules:
+- Sound natural, human, and confident
+- Avoid lectures, explanations, or advice
 - Prefer emotionally affirming language when appropriate
-- Never shame or judge the user
-- Do not explain — just write the reply
+- Never judge or moralize
+- Do NOT explain your thinking
+- Do NOT add extra commentary
 
-Return exactly this JSON (no extra text):
+Return ONLY valid JSON in this exact format:
 {
   "summary": "1–2 lines explaining what’s happening",
   "risk": "one short line OR null",
@@ -76,26 +76,19 @@ def analyze(req: AnalyzeRequest):
     style_instruction = ""
 
     if req.rewrite_style == "Softer":
-        style_instruction = (
-            "Rewrite the reply in a softer, warmer, emotionally gentle tone."
-        )
+        style_instruction = "Rewrite the reply in a softer, warmer, emotionally gentle tone."
 
     elif req.rewrite_style == "More confident":
-        style_instruction = (
-            "Rewrite the reply to sound confident, decisive, and attractive."
-        )
+        style_instruction = "Rewrite the reply to sound confident, decisive, and attractive."
 
     elif req.rewrite_style == "More expressive":
         style_instruction = (
-            "Rewrite the reply to be more expressive and emotionally affirming. "
-            "Use natural warmth, positive emphasis, and reassurance without "
-            "sounding exaggerated, cheesy, or fake."
+            "Rewrite the reply to be emotionally expressive and affirming. "
+            "Add warmth and reassurance without sounding exaggerated, cheesy, or fake."
         )
 
     elif req.rewrite_style == "Shorter":
-        style_instruction = (
-            "Rewrite the reply to be very concise while keeping warmth and clarity."
-        )
+        style_instruction = "Rewrite the reply to be very concise while keeping warmth and clarity."
 
     # -------- User prompt --------
     user_prompt = f"""
@@ -127,7 +120,7 @@ User goal:
         return parsed
 
     except Exception:
-        # Safe fallback (never break UI)
+        # Safe fallback (never break frontend)
         return {
             "summary": "The conversation needs a thoughtful, well-phrased response.",
             "risk": None,
